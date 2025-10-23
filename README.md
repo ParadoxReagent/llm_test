@@ -1,56 +1,59 @@
 # LLM Model Comparison Tool
 
-A Python tool to compare responses from multiple Large Language Models (LLMs) using the litellm API. Enter a prompt and see how different models respond side-by-side to evaluate which model works best for your use case.
+A Python tool to compare responses from multiple Large Language Models (LLMs) using a single litellm API key. Enter a prompt and see how different models respond side-by-side to evaluate which model works best for your use case.
 
 ## Features
 
 - 🤖 Compare multiple LLM models simultaneously
+- 🔑 Single API key for all models
 - 💬 Interactive mode for testing multiple prompts
 - 🎯 Single-prompt mode for quick comparisons
-- 🔧 Customizable model selection
+- 🔧 Easy model customization via `models.py`
+- 📋 Preset model lists for different use cases
 - 🌡️ Adjustable temperature settings
 - ✨ Clean, formatted output for easy comparison
 
-## Supported Models
+## Quick Start
 
-Thanks to litellm, you can use models from many providers:
-
-- **OpenAI**: `gpt-4o`, `gpt-4o-mini`, `gpt-3.5-turbo`, `gpt-4`, etc.
-- **Anthropic**: `claude-3-5-sonnet-20241022`, `claude-3-opus-20240229`, etc.
-- **Google**: `gemini/gemini-1.5-pro`, `gemini/gemini-1.5-flash`, etc.
-- **And many more!** See [litellm providers](https://docs.litellm.ai/docs/providers)
-
-## Installation
-
-1. Clone this repository:
-```bash
-git clone <repository-url>
-cd llm_test
-```
-
-2. Install dependencies:
+1. **Install dependencies:**
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Set up your API keys:
+2. **Set your litellm API key:**
 ```bash
-cp .env.example .env
-# Edit .env and add your API keys
+export LITELLM_API_KEY="your_key_here"
 ```
 
-Or export them directly:
+3. **Run the comparison:**
 ```bash
-export OPENAI_API_KEY="your_key_here"
-export ANTHROPIC_API_KEY="your_key_here"
-export GEMINI_API_KEY="your_key_here"
+python llm_compare.py -p "Explain quantum computing"
 ```
+
+## Customizing Models
+
+Edit `models.py` to change which models to compare. This is the easiest way to customize your experience!
+
+```python
+# In models.py, just edit this list:
+MODELS = [
+    "gpt-4o-mini",
+    "gpt-3.5-turbo",
+    "claude-3-5-sonnet-20241022",
+    "gemini/gemini-1.5-flash"
+]
+```
+
+You can add any models supported by litellm. The file also includes preset lists for different use cases:
+- `CREATIVE_MODELS` - Best for creative writing
+- `FAST_MODELS` - Fast and cost-effective models
+- `CODING_MODELS` - Optimized for code generation
 
 ## Usage
 
 ### Interactive Mode (Default)
 
-Run the script without arguments to enter interactive mode:
+Run without arguments to enter interactive mode:
 
 ```bash
 python llm_compare.py
@@ -66,12 +69,27 @@ Compare models with a single prompt:
 python llm_compare.py -p "Explain quantum computing in simple terms"
 ```
 
-### Custom Models
+### Using Preset Model Lists
 
-Specify which models to compare:
+Use predefined model lists from `models.py`:
 
 ```bash
-python llm_compare.py -m gpt-4o claude-3-5-sonnet-20241022 gemini/gemini-1.5-flash -p "Write a haiku about coding"
+# For creative writing
+python llm_compare.py --preset creative -p "Write a short story"
+
+# For fast responses
+python llm_compare.py --preset fast -p "Quick question"
+
+# For coding tasks
+python llm_compare.py --preset coding -p "Write a function to sort a list"
+```
+
+### Override Models from Command Line
+
+Temporarily use different models without editing `models.py`:
+
+```bash
+python llm_compare.py -m gpt-4o claude-3-5-sonnet-20241022 -p "Write a haiku"
 ```
 
 ### Adjust Temperature
@@ -85,40 +103,65 @@ python llm_compare.py -p "Write a creative story" -t 0.9
 ### Full Command Reference
 
 ```bash
-python llm_compare.py [-h] [-p PROMPT] [-m MODEL1 MODEL2 ...] [-t TEMPERATURE]
+python llm_compare.py [-h] [-p PROMPT] [-m MODEL1 MODEL2 ...] [--preset PRESET] [-t TEMPERATURE]
 
 Options:
-  -h, --help            Show help message
-  -p, --prompt PROMPT   Prompt to send to all models
-  -m, --models MODELS   Models to compare (default: gpt-4o-mini, gpt-3.5-turbo,
-                        claude-3-5-sonnet-20241022, gemini/gemini-1.5-flash)
-  -t, --temperature T   Temperature for responses (0-1, default: 0.7)
+  -h, --help              Show help message
+  -p, --prompt PROMPT     Prompt to send to all models
+  -m, --models MODELS     Override models from models.py
+  --preset PRESET         Use preset: creative, fast, or coding
+  -t, --temperature T     Temperature (0-1, default from models.py)
 ```
 
-## Examples
+## Configuration Files
 
-**Compare creative writing:**
+### `models.py` - Model Configuration
+
+This is your main configuration file. Edit it to:
+- Change default models
+- Create custom preset lists
+- Adjust default temperature
+
+Example:
+```python
+MODELS = [
+    "gpt-4o",
+    "claude-3-5-sonnet-20241022",
+    "gemini/gemini-1.5-pro"
+]
+
+DEFAULT_TEMPERATURE = 0.7
+```
+
+### `.env` - API Key
+
+Store your litellm API key:
 ```bash
-python llm_compare.py -p "Write a short poem about AI" -t 0.8
+cp .env.example .env
+# Edit .env and add your key
 ```
 
-**Compare code generation:**
+Or set it directly:
 ```bash
-python llm_compare.py -p "Write a Python function to calculate Fibonacci numbers" -m gpt-4o claude-3-5-sonnet-20241022
+export LITELLM_API_KEY="your_key_here"
 ```
 
-**Compare explanations:**
-```bash
-python llm_compare.py -p "Explain neural networks to a 10-year-old"
-```
+## Supported Models
 
-## Output Format
+The tool supports any models available through litellm, including:
 
-The tool displays results in an easy-to-read format:
+- **OpenAI**: `gpt-4o`, `gpt-4o-mini`, `gpt-3.5-turbo`, `gpt-4`, etc.
+- **Anthropic**: `claude-3-5-sonnet-20241022`, `claude-3-opus-20240229`, etc.
+- **Google**: `gemini/gemini-1.5-pro`, `gemini/gemini-1.5-flash`, etc.
+- **And many more!** See [litellm providers](https://docs.litellm.ai/docs/providers)
+
+All models use the same `LITELLM_API_KEY` environment variable.
+
+## Example Output
 
 ```
 ================================================================================
-Prompt: Your prompt here
+Prompt: Write a haiku about coding
 ================================================================================
 
 [1/3] Getting response from gpt-4o-mini... ✓
@@ -133,33 +176,45 @@ RESULTS
 Model 1: gpt-4o-mini
 ────────────────────────────────────────────────────────────────────────────────
 
-[Response from gpt-4o-mini]
+Code flows like streams
+Logic blooms in terminal
+Debug finds the truth
 
 ────────────────────────────────────────────────────────────────────────────────
 Model 2: claude-3-5-sonnet-20241022
 ────────────────────────────────────────────────────────────────────────────────
 
-[Response from claude-3-5-sonnet-20241022]
+Keys tap in rhythm
+Functions dance through the darkness
+Bugs flee from the light
 
 ...
 ```
 
 ## Tips
 
-- Start with the default models to compare different providers
+- **Edit `models.py` first** - This is the easiest way to customize your setup
 - Use lower temperature (0.1-0.3) for factual/technical responses
 - Use higher temperature (0.7-0.9) for creative tasks
 - In interactive mode, type `quit`, `exit`, or `q` to exit
-- Make sure you have API keys for the models you want to test
+- Use `--preset` for quick access to common model combinations
 
 ## Troubleshooting
 
-**"No API keys found"**: Make sure you've set the appropriate environment variables for the models you're using.
+**"LITELLM_API_KEY not found"**: Make sure you've set the environment variable:
+```bash
+export LITELLM_API_KEY="your_key_here"
+```
 
 **Model errors**: Check that:
-- Your API key is valid and has access to the model
+- Your API key is valid
 - You're using the correct model identifier (see [litellm docs](https://docs.litellm.ai/docs/providers))
-- You have sufficient credits/quota with the provider
+- The model is available through your litellm service/proxy
+
+**Import errors**: Make sure you've installed the requirements:
+```bash
+pip install -r requirements.txt
+```
 
 ## License
 

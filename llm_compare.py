@@ -2,6 +2,9 @@
 """
 LLM Model Comparison Tool
 Compare responses from multiple LLM models using litellm
+
+All models use the same LITELLM_API_KEY from your environment.
+Edit models.py to customize which models to compare.
 """
 
 import os
@@ -9,15 +12,7 @@ import sys
 from litellm import completion
 from typing import List, Dict
 import argparse
-
-
-# Default models to compare
-DEFAULT_MODELS = [
-    "gpt-4o-mini",
-    "gpt-3.5-turbo",
-    "claude-3-5-sonnet-20241022",
-    "gemini/gemini-1.5-flash"
-]
+import models  # Import model configurations
 
 
 def get_model_response(model: str, prompt: str, temperature: float = 0.7) -> Dict[str, str]:
@@ -140,27 +135,31 @@ def interactive_mode(models: List[str], temperature: float = 0.7):
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="Compare responses from multiple LLM models",
+        description="Compare responses from multiple LLM models using a single litellm API key",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Interactive mode with default models
+  # Interactive mode with default models (from models.py)
   python llm_compare.py
 
   # Single prompt with default models
   python llm_compare.py -p "Explain quantum computing"
 
-  # Custom models
+  # Use a preset model list
+  python llm_compare.py --preset creative -p "Write a story"
+  python llm_compare.py --preset fast -p "Quick question"
+  python llm_compare.py --preset coding -p "Write a function"
+
+  # Custom models (override models.py)
   python llm_compare.py -m gpt-4o claude-3-5-sonnet-20241022 -p "Write a haiku"
 
   # Adjust temperature
   python llm_compare.py -p "Be creative" -t 0.9
 
-Supported models include:
-  - OpenAI: gpt-4o, gpt-4o-mini, gpt-3.5-turbo
-  - Anthropic: claude-3-5-sonnet-20241022, claude-3-opus-20240229
-  - Google: gemini/gemini-1.5-pro, gemini/gemini-1.5-flash
-  - And many more via litellm!
+Configuration:
+  - Edit models.py to customize default models and presets
+  - All models use LITELLM_API_KEY environment variable
+  - Supports any models available through litellm
         """
     )
 
@@ -173,41 +172,58 @@ Supported models include:
     parser.add_argument(
         "-m", "--models",
         nargs="+",
-        default=DEFAULT_MODELS,
-        help=f"Models to compare (default: {' '.join(DEFAULT_MODELS)})"
+        help="Models to compare (overrides default from models.py)"
+    )
+
+    parser.add_argument(
+        "--preset",
+        type=str,
+        choices=["creative", "fast", "coding"],
+        help="Use a preset model list from models.py (creative, fast, or coding)"
     )
 
     parser.add_argument(
         "-t", "--temperature",
         type=float,
-        default=0.7,
-        help="Temperature for model responses (0-1, default: 0.7)"
+        help=f"Temperature for model responses (0-1, default: {models.DEFAULT_TEMPERATURE})"
     )
 
     args = parser.parse_args()
 
+    # Determine which models to use
+    if args.models:
+        selected_models = args.models
+    elif args.preset:
+        preset_map = {
+            "creative": models.CREATIVE_MODELS,
+            "fast": models.FAST_MODELS,
+            "coding": models.CODING_MODELS
+        }
+        selected_models = preset_map[args.preset]
+        print(f"Using {args.preset} preset models")
+    else:
+        selected_models = models.MODELS
+
+    # Determine temperature
+    temperature = args.temperature if args.temperature is not None else models.DEFAULT_TEMPERATURE
+
     # Validate temperature
-    if not 0 <= args.temperature <= 1:
+    if not 0 <= temperature <= 1:
         print("❌ Error: Temperature must be between 0 and 1")
         sys.exit(1)
 
-    # Check for API key (litellm will use various env vars)
-    if not any([
-        os.getenv("OPENAI_API_KEY"),
-        os.getenv("ANTHROPIC_API_KEY"),
-        os.getenv("GEMINI_API_KEY"),
-        os.getenv("LITELLM_API_KEY")
-    ]):
-        print("⚠️  Warning: No API keys found in environment variables.")
-        print("   Set OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, or other relevant keys.")
-        print("   See: https://docs.litellm.ai/docs/\n")
+    # Check for API key
+    if not os.getenv("LITELLM_API_KEY"):
+        print("⚠️  Warning: LITELLM_API_KEY not found in environment variables.")
+        print("   Set LITELLM_API_KEY to your litellm API key.")
+        print("   Example: export LITELLM_API_KEY='your_key_here'\n")
 
     # Run in single-prompt or interactive mode
     if args.prompt:
-        results = compare_models(args.prompt, args.models, args.temperature)
+        results = compare_models(args.prompt, selected_models, temperature)
         display_results(results)
     else:
-        interactive_mode(args.models, args.temperature)
+        interactive_mode(selected_models, temperature)
 
 
 if __name__ == "__main__":
