@@ -10,7 +10,19 @@ Edit models.py to customize which models to compare.
 import os
 import sys
 from litellm import completion
-from typing import List, Dict, Optional
+from typing import List, Optional, TypedDict
+
+
+class ModelResponse(TypedDict):
+    """Structured response returned for each model invocation."""
+
+    model: str
+    response: Optional[str]
+    error: Optional[str]
+    response_time: Optional[float]
+    prompt_tokens: Optional[int]
+    completion_tokens: Optional[int]
+    total_tokens: Optional[int]
 import argparse
 import models  # Import model configurations
 import time
@@ -60,7 +72,7 @@ def validate_prompt(prompt: str, prompt_type: str = "prompt") -> bool:
     return True
 
 
-def get_model_response(model: str, prompt: str, temperature: float = 0.7, system_prompt: Optional[str] = None) -> Dict[str, str]:
+def get_model_response(model: str, prompt: str, temperature: float = 0.7, system_prompt: Optional[str] = None) -> ModelResponse:
     """
     Get response from a specific model with timing and token counting.
 
@@ -71,7 +83,9 @@ def get_model_response(model: str, prompt: str, temperature: float = 0.7, system
         system_prompt: Optional system prompt to prepend
 
     Returns:
-        Dictionary with model name, response, timing, and token usage
+        Dictionary with model name, text or error response, response time in seconds,
+        and token usage counts. Numeric metrics and token fields may be ``None`` when
+        unavailable, such as when requests fail.
     """
     try:
         start_time = time.time()
@@ -97,28 +111,28 @@ def get_model_response(model: str, prompt: str, temperature: float = 0.7, system
         completion_tokens = usage.completion_tokens if usage else None
         total_tokens = usage.total_tokens if usage else None
 
-        return {
-            "model": model,
-            "response": response.choices[0].message.content,
-            "error": None,
-            "response_time": response_time,
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens
-        }
+        return ModelResponse(
+            model=model,
+            response=response.choices[0].message.content,
+            error=None,
+            response_time=response_time,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+        )
     except Exception as e:
-        return {
-            "model": model,
-            "response": None,
-            "error": str(e),
-            "response_time": None,
-            "prompt_tokens": None,
-            "completion_tokens": None,
-            "total_tokens": None
-        }
+        return ModelResponse(
+            model=model,
+            response=None,
+            error=str(e),
+            response_time=None,
+            prompt_tokens=None,
+            completion_tokens=None,
+            total_tokens=None,
+        )
 
 
-def compare_models(prompt: str, models: List[str], temperature: float = 0.7, system_prompt: Optional[str] = None) -> List[Dict[str, str]]:
+def compare_models(prompt: str, models: List[str], temperature: float = 0.7, system_prompt: Optional[str] = None) -> List[ModelResponse]:
     """
     Compare responses from multiple models in parallel.
 
@@ -146,7 +160,18 @@ def compare_models(prompt: str, models: List[str], temperature: float = 0.7, sys
         print(f"System Prompt: {system_prompt}")
     print(f"{'='*80}\n")
 
-    results = [None] * len(models)  # Pre-allocate to maintain order
+    results: List[ModelResponse] = [
+        ModelResponse(
+            model=model_name,
+            response=None,
+            error="Result pending",
+            response_time=None,
+            prompt_tokens=None,
+            completion_tokens=None,
+            total_tokens=None,
+        )
+        for model_name in models
+    ]
     completed_count = 0
 
     print(f"Querying {len(models)} models in parallel...\n")
@@ -176,21 +201,21 @@ def compare_models(prompt: str, models: List[str], temperature: float = 0.7, sys
                     tokens_str = f"{result['total_tokens']} tokens" if result['total_tokens'] else "N/A"
                     print(f"[{completed_count}/{len(models)}] {model}: ✓ ({response_time_str}, {tokens_str})")
             except Exception as e:
-                results[index] = {
-                    "model": model,
-                    "response": None,
-                    "error": str(e),
-                    "response_time": None,
-                    "prompt_tokens": None,
-                    "completion_tokens": None,
-                    "total_tokens": None
-                }
+                results[index] = ModelResponse(
+                    model=model,
+                    response=None,
+                    error=str(e),
+                    response_time=None,
+                    prompt_tokens=None,
+                    completion_tokens=None,
+                    total_tokens=None,
+                )
                 print(f"[{completed_count}/{len(models)}] {model}: ❌ Exception: {str(e)}")
 
     return results
 
 
-def display_results(results: List[Dict[str, str]]):
+def display_results(results: List[ModelResponse]):
     """
     Display comparison results in a formatted manner with performance metrics.
 
@@ -222,7 +247,7 @@ def display_results(results: List[Dict[str, str]]):
             print(f"\n{result['response']}\n")
 
 
-def export_results(results: List[Dict[str, str]], prompt: str, format: str, output_file: str, system_prompt: Optional[str] = None):
+def export_results(results: List[ModelResponse], prompt: str, format: str, output_file: str, system_prompt: Optional[str] = None):
     """
     Export comparison results to a file.
 
