@@ -12,6 +12,10 @@ A Python tool to compare responses from multiple Large Language Models (LLMs) us
 - 📋 Preset model lists for different use cases
 - 🌡️ Adjustable temperature settings
 - ✨ Clean, formatted output for easy comparison
+- ⚡ **Parallel execution** - Query all models at once for faster results
+- 📊 **Performance metrics** - Track response time and token usage
+- 💾 **Export results** - Save comparisons to JSON, CSV, or Markdown
+- 🎭 **Custom system prompts** - Set system prompts for specialized behavior
 
 ## Quick Start
 
@@ -100,17 +104,50 @@ Control the creativity/randomness of responses (0-1):
 python llm_compare.py -p "Write a creative story" -t 0.9
 ```
 
+### Custom System Prompt
+
+Set a custom system prompt to guide model behavior:
+
+```bash
+python llm_compare.py -p "Explain machine learning" -s "You are a university professor"
+```
+
+### Export Results
+
+Save comparison results to a file for later review:
+
+```bash
+# Export to JSON (includes all metadata)
+python llm_compare.py -p "What is AI?" -o results.json
+
+# Export to CSV (great for spreadsheets)
+python llm_compare.py -p "What is AI?" -o results.csv
+
+# Export to Markdown (formatted report)
+python llm_compare.py -p "What is AI?" -o results.md
+```
+
+The format is auto-detected from the file extension, or you can specify it explicitly:
+
+```bash
+python llm_compare.py -p "What is AI?" -o output.txt --export-format json
+```
+
 ### Full Command Reference
 
 ```bash
-python llm_compare.py [-h] [-p PROMPT] [-m MODEL1 MODEL2 ...] [--preset PRESET] [-t TEMPERATURE]
+python llm_compare.py [-h] [-p PROMPT] [-m MODEL1 MODEL2 ...] [--preset PRESET]
+                      [-t TEMPERATURE] [-s SYSTEM_PROMPT] [-o OUTPUT] [--export-format FORMAT]
 
 Options:
-  -h, --help              Show help message
-  -p, --prompt PROMPT     Prompt to send to all models
-  -m, --models MODELS     Override models from models.py
-  --preset PRESET         Use preset: creative, fast, or coding
-  -t, --temperature T     Temperature (0-1, default from models.py)
+  -h, --help                    Show help message
+  -p, --prompt PROMPT           Prompt to send to all models
+  -m, --models MODELS           Override models from models.py
+  --preset PRESET               Use preset: creative, fast, or coding
+  -t, --temperature T           Temperature (0-1, default from models.py)
+  -s, --system-prompt PROMPT    Custom system prompt for all models
+  -o, --output FILE             Export results to file (e.g., results.json)
+  --export-format FORMAT        Export format: json, csv, or markdown (auto-detected if not specified)
 ```
 
 ## Configuration Files
@@ -164,9 +201,11 @@ All models use the same `LITELLM_API_KEY` environment variable.
 Prompt: Write a haiku about coding
 ================================================================================
 
-[1/3] Getting response from gpt-4o-mini... ✓
-[2/3] Getting response from claude-3-5-sonnet-20241022... ✓
-[3/3] Getting response from gemini/gemini-1.5-flash... ✓
+Querying 3 models in parallel...
+
+[1/3] gpt-4o-mini: ✓ (1.23s, 245 tokens)
+[2/3] claude-3-5-sonnet-20241022: ✓ (1.45s, 198 tokens)
+[3/3] gemini/gemini-1.5-flash: ✓ (0.98s, 210 tokens)
 
 ================================================================================
 RESULTS
@@ -174,6 +213,7 @@ RESULTS
 
 ────────────────────────────────────────────────────────────────────────────────
 Model 1: gpt-4o-mini
+📊 Time: 1.23s | Tokens: 245 (prompt: 15, completion: 230)
 ────────────────────────────────────────────────────────────────────────────────
 
 Code flows like streams
@@ -182,6 +222,7 @@ Debug finds the truth
 
 ────────────────────────────────────────────────────────────────────────────────
 Model 2: claude-3-5-sonnet-20241022
+📊 Time: 1.45s | Tokens: 198 (prompt: 15, completion: 183)
 ────────────────────────────────────────────────────────────────────────────────
 
 Keys tap in rhythm
@@ -189,6 +230,8 @@ Functions dance through the darkness
 Bugs flee from the light
 
 ...
+
+✅ Results exported to: results.json
 ```
 
 ## Tips
@@ -198,6 +241,10 @@ Bugs flee from the light
 - Use higher temperature (0.7-0.9) for creative tasks
 - In interactive mode, type `quit`, `exit`, or `q` to exit
 - Use `--preset` for quick access to common model combinations
+- **Parallel execution** automatically speeds up comparisons by querying all models simultaneously
+- **Export results** to JSON for programmatic analysis, CSV for spreadsheets, or Markdown for reports
+- Use **system prompts** to make models behave as experts (e.g., "You are a Python expert")
+- Check the **performance metrics** to compare model speed and token efficiency
 
 ## Troubleshooting
 
