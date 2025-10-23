@@ -10,76 +10,140 @@ Edit models.py to customize which models to compare.
 import os
 import sys
 from litellm import completion
-from typing import List, Dict
+from typing import List, Dict, Optional
 import argparse
 import models  # Import model configurations
+import time
+import json
+import csv
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 
 
-def get_model_response(model: str, prompt: str, temperature: float = 0.7) -> Dict[str, str]:
+def get_model_response(model: str, prompt: str, temperature: float = 0.7, system_prompt: Optional[str] = None) -> Dict[str, str]:
     """
-    Get response from a specific model.
+    Get response from a specific model with timing and token counting.
 
     Args:
         model: Model identifier
         prompt: User prompt
         temperature: Response temperature (0-1)
+        system_prompt: Optional system prompt to prepend
 
     Returns:
-        Dictionary with model name and response
+        Dictionary with model name, response, timing, and token usage
     """
     try:
+        start_time = time.time()
+
+        # Build messages list
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
         response = completion(
             model=model,
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
             temperature=temperature
         )
+
+        end_time = time.time()
+        response_time = end_time - start_time
+
+        # Extract token usage if available
+        usage = response.usage if hasattr(response, 'usage') else None
+        prompt_tokens = usage.prompt_tokens if usage else None
+        completion_tokens = usage.completion_tokens if usage else None
+        total_tokens = usage.total_tokens if usage else None
+
         return {
             "model": model,
             "response": response.choices[0].message.content,
-            "error": None
+            "error": None,
+            "response_time": response_time,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens
         }
     except Exception as e:
         return {
             "model": model,
             "response": None,
-            "error": str(e)
+            "error": str(e),
+            "response_time": None,
+            "prompt_tokens": None,
+            "completion_tokens": None,
+            "total_tokens": None
         }
 
 
-def compare_models(prompt: str, models: List[str], temperature: float = 0.7) -> List[Dict[str, str]]:
+def compare_models(prompt: str, models: List[str], temperature: float = 0.7, system_prompt: Optional[str] = None) -> List[Dict[str, str]]:
     """
-    Compare responses from multiple models.
+    Compare responses from multiple models in parallel.
 
     Args:
         prompt: User prompt
         models: List of model identifiers
         temperature: Response temperature
+        system_prompt: Optional system prompt for all models
 
     Returns:
         List of response dictionaries
     """
-    results = []
-
     print(f"\n{'='*80}")
     print(f"Prompt: {prompt}")
+    if system_prompt:
+        print(f"System Prompt: {system_prompt}")
     print(f"{'='*80}\n")
 
-    for i, model in enumerate(models, 1):
-        print(f"[{i}/{len(models)}] Getting response from {model}...", end=" ", flush=True)
-        result = get_model_response(model, prompt, temperature)
-        results.append(result)
+    results = [None] * len(models)  # Pre-allocate to maintain order
+    completed_count = 0
 
-        if result["error"]:
-            print(f"❌ Error: {result['error']}")
-        else:
-            print("✓")
+    print(f"Querying {len(models)} models in parallel...\n")
+
+    # Use ThreadPoolExecutor for parallel execution
+    with ThreadPoolExecutor(max_workers=len(models)) as executor:
+        # Submit all tasks
+        future_to_index = {
+            executor.submit(get_model_response, model, prompt, temperature, system_prompt): i
+            for i, model in enumerate(models)
+        }
+
+        # Process results as they complete
+        for future in as_completed(future_to_index):
+            index = future_to_index[future]
+            model = models[index]
+            completed_count += 1
+
+            try:
+                result = future.result()
+                results[index] = result
+
+                if result["error"]:
+                    print(f"[{completed_count}/{len(models)}] {model}: ❌ Error: {result['error']}")
+                else:
+                    response_time_str = f"{result['response_time']:.2f}s" if result['response_time'] else "N/A"
+                    tokens_str = f"{result['total_tokens']} tokens" if result['total_tokens'] else "N/A"
+                    print(f"[{completed_count}/{len(models)}] {model}: ✓ ({response_time_str}, {tokens_str})")
+            except Exception as e:
+                results[index] = {
+                    "model": model,
+                    "response": None,
+                    "error": str(e),
+                    "response_time": None,
+                    "prompt_tokens": None,
+                    "completion_tokens": None,
+                    "total_tokens": None
+                }
+                print(f"[{completed_count}/{len(models)}] {model}: ❌ Exception: {str(e)}")
 
     return results
 
 
 def display_results(results: List[Dict[str, str]]):
     """
-    Display comparison results in a formatted manner.
+    Display comparison results in a formatted manner with performance metrics.
 
     Args:
         results: List of response dictionaries
@@ -91,6 +155,16 @@ def display_results(results: List[Dict[str, str]]):
     for i, result in enumerate(results, 1):
         print(f"\n{'─'*80}")
         print(f"Model {i}: {result['model']}")
+
+        # Display performance metrics
+        metrics = []
+        if result.get("response_time") is not None:
+            metrics.append(f"Time: {result['response_time']:.2f}s")
+        if result.get("total_tokens") is not None:
+            metrics.append(f"Tokens: {result['total_tokens']} (prompt: {result.get('prompt_tokens', 'N/A')}, completion: {result.get('completion_tokens', 'N/A')})")
+
+        if metrics:
+            print(f"📊 {' | '.join(metrics)}")
         print(f"{'─'*80}")
 
         if result["error"]:
@@ -99,16 +173,89 @@ def display_results(results: List[Dict[str, str]]):
             print(f"\n{result['response']}\n")
 
 
-def interactive_mode(models: List[str], temperature: float = 0.7):
+def export_results(results: List[Dict[str, str]], prompt: str, format: str, output_file: str, system_prompt: Optional[str] = None):
+    """
+    Export comparison results to a file.
+
+    Args:
+        results: List of response dictionaries
+        prompt: The original prompt
+        format: Export format (json, csv, or markdown)
+        output_file: Output file path
+        system_prompt: Optional system prompt used
+    """
+    timestamp = datetime.now().isoformat()
+
+    if format == "json":
+        export_data = {
+            "timestamp": timestamp,
+            "prompt": prompt,
+            "system_prompt": system_prompt,
+            "results": results
+        }
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(export_data, f, indent=2, ensure_ascii=False)
+
+    elif format == "csv":
+        with open(output_file, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(["Timestamp", "Prompt", "System Prompt", "Model", "Response", "Response Time (s)", "Prompt Tokens", "Completion Tokens", "Total Tokens", "Error"])
+
+            for result in results:
+                writer.writerow([
+                    timestamp,
+                    prompt,
+                    system_prompt or "",
+                    result["model"],
+                    result["response"] or "",
+                    result.get("response_time", ""),
+                    result.get("prompt_tokens", ""),
+                    result.get("completion_tokens", ""),
+                    result.get("total_tokens", ""),
+                    result.get("error", "")
+                ])
+
+    elif format == "markdown":
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(f"# LLM Model Comparison Results\n\n")
+            f.write(f"**Timestamp:** {timestamp}\n\n")
+            f.write(f"**Prompt:** {prompt}\n\n")
+            if system_prompt:
+                f.write(f"**System Prompt:** {system_prompt}\n\n")
+            f.write(f"---\n\n")
+
+            for i, result in enumerate(results, 1):
+                f.write(f"## Model {i}: {result['model']}\n\n")
+
+                # Performance metrics
+                if result.get("response_time") is not None:
+                    f.write(f"**Response Time:** {result['response_time']:.2f}s\n\n")
+                if result.get("total_tokens") is not None:
+                    f.write(f"**Token Usage:** {result['total_tokens']} total (prompt: {result.get('prompt_tokens', 'N/A')}, completion: {result.get('completion_tokens', 'N/A')})\n\n")
+
+                if result["error"]:
+                    f.write(f"**Error:** {result['error']}\n\n")
+                else:
+                    f.write(f"**Response:**\n\n{result['response']}\n\n")
+
+                f.write(f"---\n\n")
+
+    print(f"✅ Results exported to: {output_file}")
+
+
+def interactive_mode(models: List[str], temperature: float = 0.7, system_prompt: Optional[str] = None):
     """
     Run in interactive mode, allowing multiple prompts.
 
     Args:
         models: List of model identifiers
         temperature: Response temperature
+        system_prompt: Optional system prompt for all interactions
     """
     print("\n🤖 LLM Model Comparison Tool")
     print(f"Comparing models: {', '.join(models)}")
+    if system_prompt:
+        print(f"System prompt: {system_prompt}")
     print("\nEnter your prompts (or 'quit' to exit)\n")
 
     while True:
@@ -122,7 +269,7 @@ def interactive_mode(models: List[str], temperature: float = 0.7):
                 print("\nGoodbye!")
                 break
 
-            results = compare_models(prompt, models, temperature)
+            results = compare_models(prompt, models, temperature, system_prompt)
             display_results(results)
 
         except KeyboardInterrupt:
@@ -156,6 +303,14 @@ Examples:
   # Adjust temperature
   python llm_compare.py -p "Be creative" -t 0.9
 
+  # Use a custom system prompt
+  python llm_compare.py -p "Explain AI" -s "You are a helpful teacher"
+
+  # Export results to file (auto-detects format from extension)
+  python llm_compare.py -p "What is Python?" -o results.json
+  python llm_compare.py -p "What is Python?" -o results.csv
+  python llm_compare.py -p "What is Python?" -o results.md
+
 Configuration:
   - Edit models.py to customize default models and presets
   - All models use LITELLM_API_KEY environment variable
@@ -188,6 +343,25 @@ Configuration:
         help=f"Temperature for model responses (0-1, default: {models.DEFAULT_TEMPERATURE})"
     )
 
+    parser.add_argument(
+        "-s", "--system-prompt",
+        type=str,
+        help="System prompt to use for all models"
+    )
+
+    parser.add_argument(
+        "-o", "--output",
+        type=str,
+        help="Export results to file (e.g., results.json, results.csv, results.md)"
+    )
+
+    parser.add_argument(
+        "--export-format",
+        type=str,
+        choices=["json", "csv", "markdown"],
+        help="Export format (auto-detected from --output extension if not specified)"
+    )
+
     args = parser.parse_args()
 
     # Determine which models to use
@@ -218,12 +392,36 @@ Configuration:
         print("   Set LITELLM_API_KEY to your litellm API key.")
         print("   Example: export LITELLM_API_KEY='your_key_here'\n")
 
+    # Determine export format if output file is specified
+    export_format = None
+    if args.output:
+        if args.export_format:
+            export_format = args.export_format
+        else:
+            # Auto-detect from file extension
+            ext = args.output.split('.')[-1].lower()
+            if ext == 'json':
+                export_format = 'json'
+            elif ext == 'csv':
+                export_format = 'csv'
+            elif ext in ['md', 'markdown']:
+                export_format = 'markdown'
+            else:
+                print(f"⚠️  Warning: Could not determine format from extension '.{ext}', defaulting to JSON")
+                export_format = 'json'
+
     # Run in single-prompt or interactive mode
     if args.prompt:
-        results = compare_models(args.prompt, selected_models, temperature)
+        results = compare_models(args.prompt, selected_models, temperature, args.system_prompt)
         display_results(results)
+
+        # Export if requested
+        if args.output:
+            export_results(results, args.prompt, export_format, args.output, args.system_prompt)
     else:
-        interactive_mode(selected_models, temperature)
+        if args.output:
+            print("⚠️  Warning: Export (-o/--output) is only supported in single-prompt mode, not interactive mode")
+        interactive_mode(selected_models, temperature, args.system_prompt)
 
 
 if __name__ == "__main__":
