@@ -18,6 +18,46 @@ import json
 import csv
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Security constants
+MAX_PROMPT_LENGTH = 50000  # Maximum characters for a prompt
+MAX_SYSTEM_PROMPT_LENGTH = 10000  # Maximum characters for system prompt
+
+
+def validate_prompt(prompt: str, prompt_type: str = "prompt") -> bool:
+    """
+    Validate prompt input for security and sanity.
+
+    Args:
+        prompt: The prompt to validate
+        prompt_type: Type of prompt ("prompt" or "system_prompt")
+
+    Returns:
+        True if valid
+
+    Raises:
+        ValueError: If prompt is invalid
+    """
+    if not prompt:
+        raise ValueError(f"❌ Error: {prompt_type.capitalize()} cannot be empty")
+
+    # Check length based on prompt type
+    max_length = MAX_SYSTEM_PROMPT_LENGTH if prompt_type == "system_prompt" else MAX_PROMPT_LENGTH
+    if len(prompt) > max_length:
+        raise ValueError(
+            f"❌ Error: {prompt_type.capitalize()} is too long ({len(prompt)} characters). "
+            f"Maximum allowed: {max_length} characters"
+        )
+
+    # Strip any null bytes (potential injection attack)
+    if '\0' in prompt:
+        raise ValueError(f"❌ Error: {prompt_type.capitalize()} contains invalid null bytes")
+
+    return True
 
 
 def get_model_response(model: str, prompt: str, temperature: float = 0.7, system_prompt: Optional[str] = None) -> Dict[str, str]:
@@ -91,6 +131,15 @@ def compare_models(prompt: str, models: List[str], temperature: float = 0.7, sys
     Returns:
         List of response dictionaries
     """
+    # Validate inputs
+    try:
+        validate_prompt(prompt, "prompt")
+        if system_prompt:
+            validate_prompt(system_prompt, "system_prompt")
+    except ValueError as e:
+        print(str(e))
+        sys.exit(1)
+
     print(f"\n{'='*80}")
     print(f"Prompt: {prompt}")
     if system_prompt:
@@ -184,63 +233,78 @@ def export_results(results: List[Dict[str, str]], prompt: str, format: str, outp
         output_file: Output file path
         system_prompt: Optional system prompt used
     """
-    timestamp = datetime.now().isoformat()
+    try:
+        # Create directory if it doesn't exist
+        output_dir = os.path.dirname(output_file)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
 
-    if format == "json":
-        export_data = {
-            "timestamp": timestamp,
-            "prompt": prompt,
-            "system_prompt": system_prompt,
-            "results": results
-        }
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(export_data, f, indent=2, ensure_ascii=False)
+        timestamp = datetime.now().isoformat()
 
-    elif format == "csv":
-        with open(output_file, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(["Timestamp", "Prompt", "System Prompt", "Model", "Response", "Response Time (s)", "Prompt Tokens", "Completion Tokens", "Total Tokens", "Error"])
+        if format == "json":
+            export_data = {
+                "timestamp": timestamp,
+                "prompt": prompt,
+                "system_prompt": system_prompt,
+                "results": results
+            }
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(export_data, f, indent=2, ensure_ascii=False)
 
-            for result in results:
-                writer.writerow([
-                    timestamp,
-                    prompt,
-                    system_prompt or "",
-                    result["model"],
-                    result["response"] or "",
-                    result.get("response_time", ""),
-                    result.get("prompt_tokens", ""),
-                    result.get("completion_tokens", ""),
-                    result.get("total_tokens", ""),
-                    result.get("error", "")
-                ])
+        elif format == "csv":
+            with open(output_file, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(["Timestamp", "Prompt", "System Prompt", "Model", "Response", "Response Time (s)", "Prompt Tokens", "Completion Tokens", "Total Tokens", "Error"])
 
-    elif format == "markdown":
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(f"# LLM Model Comparison Results\n\n")
-            f.write(f"**Timestamp:** {timestamp}\n\n")
-            f.write(f"**Prompt:** {prompt}\n\n")
-            if system_prompt:
-                f.write(f"**System Prompt:** {system_prompt}\n\n")
-            f.write(f"---\n\n")
+                for result in results:
+                    writer.writerow([
+                        timestamp,
+                        prompt,
+                        system_prompt or "",
+                        result["model"],
+                        result["response"] or "",
+                        result.get("response_time", ""),
+                        result.get("prompt_tokens", ""),
+                        result.get("completion_tokens", ""),
+                        result.get("total_tokens", ""),
+                        result.get("error", "")
+                    ])
 
-            for i, result in enumerate(results, 1):
-                f.write(f"## Model {i}: {result['model']}\n\n")
-
-                # Performance metrics
-                if result.get("response_time") is not None:
-                    f.write(f"**Response Time:** {result['response_time']:.2f}s\n\n")
-                if result.get("total_tokens") is not None:
-                    f.write(f"**Token Usage:** {result['total_tokens']} total (prompt: {result.get('prompt_tokens', 'N/A')}, completion: {result.get('completion_tokens', 'N/A')})\n\n")
-
-                if result["error"]:
-                    f.write(f"**Error:** {result['error']}\n\n")
-                else:
-                    f.write(f"**Response:**\n\n{result['response']}\n\n")
-
+        elif format == "markdown":
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write(f"# LLM Model Comparison Results\n\n")
+                f.write(f"**Timestamp:** {timestamp}\n\n")
+                f.write(f"**Prompt:** {prompt}\n\n")
+                if system_prompt:
+                    f.write(f"**System Prompt:** {system_prompt}\n\n")
                 f.write(f"---\n\n")
 
-    print(f"✅ Results exported to: {output_file}")
+                for i, result in enumerate(results, 1):
+                    f.write(f"## Model {i}: {result['model']}\n\n")
+
+                    # Performance metrics
+                    if result.get("response_time") is not None:
+                        f.write(f"**Response Time:** {result['response_time']:.2f}s\n\n")
+                    if result.get("total_tokens") is not None:
+                        f.write(f"**Token Usage:** {result['total_tokens']} total (prompt: {result.get('prompt_tokens', 'N/A')}, completion: {result.get('completion_tokens', 'N/A')})\n\n")
+
+                    if result["error"]:
+                        f.write(f"**Error:** {result['error']}\n\n")
+                    else:
+                        f.write(f"**Response:**\n\n{result['response']}\n\n")
+
+                    f.write(f"---\n\n")
+
+        print(f"✅ Results exported to: {output_file}")
+
+    except PermissionError:
+        print(f"❌ Error: Permission denied when writing to {output_file}")
+        print("   Check that you have write permissions for this location.")
+    except OSError as e:
+        print(f"❌ Error: Failed to write to {output_file}: {e}")
+        print("   Check that the path is valid and the disk has space.")
+    except Exception as e:
+        print(f"❌ Error: Unexpected error while exporting results: {e}")
 
 
 def interactive_mode(models: List[str], temperature: float = 0.7, system_prompt: Optional[str] = None):
@@ -268,6 +332,13 @@ def interactive_mode(models: List[str], temperature: float = 0.7, system_prompt:
             if prompt.lower() in ['quit', 'exit', 'q']:
                 print("\nGoodbye!")
                 break
+
+            # Validate prompt before processing
+            try:
+                validate_prompt(prompt, "prompt")
+            except ValueError as e:
+                print(str(e))
+                continue
 
             results = compare_models(prompt, models, temperature, system_prompt)
             display_results(results)
@@ -378,6 +449,11 @@ Configuration:
     else:
         selected_models = models.MODELS
 
+    # Validate models list is not empty
+    if not selected_models:
+        print("❌ Error: No models specified. Please configure models in models.py or use -m/--models")
+        sys.exit(1)
+
     # Determine temperature
     temperature = args.temperature if args.temperature is not None else models.DEFAULT_TEMPERATURE
 
@@ -386,11 +462,21 @@ Configuration:
         print("❌ Error: Temperature must be between 0 and 1")
         sys.exit(1)
 
-    # Check for API key
+    # Check for API key (required)
     if not os.getenv("LITELLM_API_KEY"):
-        print("⚠️  Warning: LITELLM_API_KEY not found in environment variables.")
+        print("❌ Error: LITELLM_API_KEY not found in environment variables.")
         print("   Set LITELLM_API_KEY to your litellm API key.")
-        print("   Example: export LITELLM_API_KEY='your_key_here'\n")
+        print("   Example: export LITELLM_API_KEY='your_key_here'")
+        print("   Or add it to a .env file in the project directory")
+        sys.exit(1)
+
+    # Validate system prompt if provided
+    if args.system_prompt:
+        try:
+            validate_prompt(args.system_prompt, "system_prompt")
+        except ValueError as e:
+            print(str(e))
+            sys.exit(1)
 
     # Determine export format if output file is specified
     export_format = None
