@@ -1,0 +1,26 @@
+# Example configuration file for LLM Compare
+# Copy this to config.yaml and customize as needed
+
+# List of models to compare
+models:
+  - gpt-4o-mini
+  - claude-3-5-sonnet-20241022
+  - gemini/gemini-1.5-flash
+
+# Temperature setting (0-1)
+# Lower = more focused, Higher = more creative
+temperature: 0.7
+
+# Optional system prompt for all models
+# Uncomment to use:
+# system_prompt: "You are a helpful assistant specialized in technical writing."
+
+# Retry settings
+max_retries: 3
+retry_delay: 1.0  # Base delay in seconds for exponential backoff
+
+# Timeout in seconds
+timeout: 120
+
+# Streaming mode (experimental)
+stream: false

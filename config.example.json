@@ -1,0 +1,13 @@
+{
+  "models": [
+    "gpt-4o-mini",
+    "claude-3-5-sonnet-20241022",
+    "gemini/gemini-1.5-flash"
+  ],
+  "temperature": 0.7,
+  "system_prompt": null,
+  "max_retries": 3,
+  "retry_delay": 1.0,
+  "timeout": 120,
+  "stream": false
+}

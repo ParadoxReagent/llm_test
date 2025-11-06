@@ -1,0 +1,15 @@
+# Development dependencies
+# Install with: pip install -r requirements-dev.txt
+
+# Install main dependencies first
+-r requirements.txt
+
+# Testing
+pytest>=7.4.3
+pytest-cov>=4.1.0
+pytest-asyncio>=0.23.0
+
+# Code quality
+ruff>=0.1.9
+mypy>=1.7.1
+types-pyyaml>=6.0.12
