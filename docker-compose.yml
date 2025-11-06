@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  llm-compare:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: llm-compare
+    environment:
+      # Load API key from .env file or pass as environment variable
+      - LITELLM_API_KEY=${LITELLM_API_KEY}
+    volumes:
+      # Mount current directory to access config files and save exports
+      - ./config:/app/config:ro
+      - ./exports:/app/exports:rw
+    # Interactive mode by default
+    stdin_open: true
+    tty: true
+    # Override command for different modes
+    # Example: docker-compose run llm-compare -p "Hello world"
+    command: []
+
+  # Example service for batch processing
+  llm-compare-batch:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: llm-compare-batch
+    environment:
+      - LITELLM_API_KEY=${LITELLM_API_KEY}
+    volumes:
+      - ./config:/app/config:ro
+      - ./exports:/app/exports:rw
+    # Run with a config file
+    command: ["--config", "/app/config/config.yaml", "-p", "Explain quantum computing", "-o", "/app/exports/results.json"]
+    # Remove after completion
+    restart: "no"
